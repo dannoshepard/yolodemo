@@ -8,6 +8,16 @@ class YOLOProcessor {
     private var visionModel: VNCoreMLModel?
     private var isModelLoaded = false
     
+    // Configurable parameters
+    struct Config {
+        var confidenceThreshold: Float = 0.35
+        var iouThreshold: Float = 0.45
+        var minBoxSize: Float = 10  // minimum box dimension in pixels
+        var maxBoxSize: Float = 600 // maximum box dimension in pixels
+    }
+    
+    var config = Config()
+    
     private init() {
         setupModel()
     }
@@ -117,7 +127,12 @@ class YOLOProcessor {
             let h = Float(truncating: multiArray[[0, 3, box] as [NSNumber]])
             
             // Skip invalid boxes
-            guard w > 0 && h > 0 && w < 640 && h < 640 else { continue }
+            guard w > 0 && h > 0 else { continue }
+            guard w < 640 && h < 640 else { continue }
+            
+            // Size-based filtering
+            guard w >= config.minBoxSize && h >= config.minBoxSize else { continue }
+            guard w <= config.maxBoxSize && h <= config.maxBoxSize else { continue }
             
             // Find the highest class score
             var maxScore: Float = 0
@@ -131,14 +146,13 @@ class YOLOProcessor {
                 }
             }
             
-            // Higher confidence threshold
-            if maxScore > 0.35 {
+            if maxScore > config.confidenceThreshold {
                 // Create normalized bounding box
                 let boundingBox = CGRect(
-                    x: CGFloat((y - h/2) / 640.0),  // YOLO's y is our x
-                    y: CGFloat(1.0 - ((x + w/2) / 640.0)),  // YOLO's x is our y, flipped
-                    width: CGFloat(h / 640.0),  // YOLO's h is our width
-                    height: CGFloat(w / 640.0)   // YOLO's w is our height
+                    x: CGFloat((y - h/2) / 640.0),
+                    y: CGFloat(1.0 - ((x + w/2) / 640.0)),
+                    width: CGFloat(h / 640.0),
+                    height: CGFloat(w / 640.0)
                 )
                 
                 let detection = Detection(
@@ -163,7 +177,7 @@ class YOLOProcessor {
             // Filter out overlapping boxes
             candidateDetections = candidateDetections.filter { candidate in
                 let iou = calculateIOU(current.0.boundingBox, candidate.0.boundingBox)
-                return iou < 0.45
+                return iou < config.iouThreshold
             }
         }
         

@@ -15,6 +15,13 @@ struct ContentView: View {
     @State private var detections: [Detection] = []
     @State private var lastProcessedTime = Date()
     @State private var isProcessingFrame = false
+    @State private var showControls = false
+    
+    // YOLO parameters
+    @State private var confidenceThreshold: Double = Double(YOLOProcessor.shared.config.confidenceThreshold)
+    @State private var iouThreshold: Double = Double(YOLOProcessor.shared.config.iouThreshold)
+    @State private var minBoxSize: Double = Double(YOLOProcessor.shared.config.minBoxSize)
+    @State private var maxBoxSize: Double = Double(YOLOProcessor.shared.config.maxBoxSize)
     
     var body: some View {
         GeometryReader { geometry in
@@ -22,23 +29,70 @@ struct ContentView: View {
                 if let previewLayer = cameraManager.previewLayer {
                     CameraPreviewView(previewLayer: previewLayer)
                         .ignoresSafeArea()
-                        .frame(width: geometry.size.width, height: geometry.size.height)
                     
                     DetectionBoxesView(detections: detections, geometry: geometry)
                         .ignoresSafeArea()
                     
-                    // Debug overlay
                     VStack {
-                        Text("Processing: \(isProcessingFrame ? "Yes" : "No")")
-                            .foregroundColor(.green)
+                        // Debug overlay
+                        HStack {
+                            VStack(alignment: .leading) {
+                                Text("Processing: \(isProcessingFrame ? "Yes" : "No")")
+                                    .foregroundColor(.green)
+                                Text("Detections: \(detections.count)")
+                                    .foregroundColor(.green)
+                            }
                             .padding()
                             .background(Color.black.opacity(0.5))
-                        Text("Detections: \(detections.count)")
-                            .foregroundColor(.green)
+                            
+                            Spacer()
+                            
+                            Button(action: { showControls.toggle() }) {
+                                Image(systemName: "slider.horizontal.3")
+                                    .foregroundColor(.white)
+                                    .padding()
+                                    .background(Color.black.opacity(0.5))
+                            }
+                        }
+                        .padding()
+                        
+                        Spacer()
+                        
+                        // Parameter controls
+                        if showControls {
+                            VStack(spacing: 10) {
+                                ParameterSlider(value: $confidenceThreshold,
+                                              range: 0.1...1.0,
+                                              title: "Confidence",
+                                              format: "%.2f") { newValue in
+                                    YOLOProcessor.shared.config.confidenceThreshold = Float(newValue)
+                                }
+                                
+                                ParameterSlider(value: $iouThreshold,
+                                              range: 0.1...1.0,
+                                              title: "IoU",
+                                              format: "%.2f") { newValue in
+                                    YOLOProcessor.shared.config.iouThreshold = Float(newValue)
+                                }
+                                
+                                ParameterSlider(value: $minBoxSize,
+                                              range: 5...100,
+                                              title: "Min Size",
+                                              format: "%.0f") { newValue in
+                                    YOLOProcessor.shared.config.minBoxSize = Float(newValue)
+                                }
+                                
+                                ParameterSlider(value: $maxBoxSize,
+                                              range: 100...640,
+                                              title: "Max Size",
+                                              format: "%.0f") { newValue in
+                                    YOLOProcessor.shared.config.maxBoxSize = Float(newValue)
+                                }
+                            }
                             .padding()
-                            .background(Color.black.opacity(0.5))
+                            .background(Color.black.opacity(0.7))
+                        }
                     }
-                    .position(x: 100, y: 50)
                 } else {
                     Color.black
                         .ignoresSafeArea()
@@ -70,16 +124,8 @@ struct ContentView: View {
         
         do {
             let newDetections = try await YOLOProcessor.shared.detect(in: pixelBuffer)
-            print("Raw detections count: \(newDetections.count)")
-            
             await MainActor.run {
-                // Lower the confidence threshold for testing
-                self.detections = newDetections.filter { detection in
-                    let passed = detection.confidence > 0.2 // Lower threshold for testing
-                    print("Detection \(detection.label): confidence \(detection.confidence) passed filter: \(passed)")
-                    return passed
-                }
-                print("Filtered detections count: \(self.detections.count)")
+                self.detections = newDetections
             }
         } catch {
             print("Detection error: \(error)")
@@ -155,6 +201,24 @@ struct Detection: Identifiable {
     let label: String
     let confidence: Float
     let boundingBox: CGRect
+}
+
+struct ParameterSlider: View {
+    @Binding var value: Double
+    let range: ClosedRange<Double>
+    let title: String
+    let format: String
+    let onChanged: (Double) -> Void
+    
+    var body: some View {
+        VStack(alignment: .leading) {
+            Text("\(title): \(String(format: format, value))")
+                .foregroundColor(.white)
+            Slider(value: $value, in: range) { _ in
+                onChanged(value)
+            }
+        }
+    }
 }
 
 #Preview {
