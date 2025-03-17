@@ -47,6 +47,9 @@ class CameraManager: NSObject, ObservableObject {
         print("Beginning camera session configuration")
         session.beginConfiguration()
         
+        // Set session preset for optimal quality
+        session.sessionPreset = .hd1920x1080
+        
         guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) else {
             print("Failed to get camera device")
             return
@@ -58,21 +61,37 @@ class CameraManager: NSObject, ObservableObject {
                 session.addInput(input)
                 print("Added camera input to session")
                 
-                // Configure video output for full resolution
+                // Configure video output
                 videoOutput.videoSettings = [
-                    kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA
+                    kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+                    kCVPixelBufferWidthKey as String: 1920,
+                    kCVPixelBufferHeightKey as String: 1080
                 ]
+                videoOutput.alwaysDiscardsLateVideoFrames = true
                 
-                // Set preview layer to fill
-                previewLayer?.videoGravity = .resizeAspectFill
+                // Set preview orientation
+                if let connection = videoOutput.connection(with: .video) {
+                    connection.videoOrientation = .portrait
+                    if connection.isVideoMirroringSupported {
+                        connection.isVideoMirrored = false
+                    }
+                }
             } else {
                 print("Could not add camera input to session")
             }
             
             if session.canAddOutput(videoOutput) {
                 session.addOutput(videoOutput)
-                videoOutput.setSampleBufferDelegate(self, queue: DispatchQueue(label: "videoQueue"))
+                videoOutput.setSampleBufferDelegate(self, queue: DispatchQueue(label: "videoQueue", qos: .userInteractive))
                 print("Added video output to session")
+                
+                // Configure output connection after adding output
+                if let connection = videoOutput.connection(with: .video) {
+                    connection.videoOrientation = .portrait
+                    if connection.isVideoMirroringSupported {
+                        connection.isVideoMirrored = false
+                    }
+                }
             } else {
                 print("Could not add video output to session")
             }
@@ -85,9 +104,10 @@ class CameraManager: NSObject, ObservableObject {
                 print("Creating preview layer")
                 let previewLayer = AVCaptureVideoPreviewLayer(session: self.session)
                 
-                // Set initial frame (will be updated by SwiftUI view)
                 previewLayer.videoGravity = .resizeAspectFill
-                previewLayer.connection?.videoOrientation = .portrait
+                if let connection = previewLayer.connection {
+                    connection.videoOrientation = .portrait
+                }
                 
                 self.previewLayer = previewLayer
                 

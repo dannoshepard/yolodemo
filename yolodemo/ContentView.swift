@@ -133,54 +133,39 @@ struct ContentView: View {
     }
 }
 
+
 struct CameraPreviewView: UIViewRepresentable {
     let previewLayer: AVCaptureVideoPreviewLayer
     
     func makeUIView(context: Context) -> UIView {
         let view = UIView(frame: UIScreen.main.bounds)
         
-        // Calculate square dimensions
-        let squareSize = min(view.bounds.width, view.bounds.height)
-        let x = (view.bounds.width - squareSize) / 2
-        let y = (view.bounds.height - squareSize) / 2
-        
-        // Set square frame
-        previewLayer.frame = CGRect(x: x, y: y, width: squareSize, height: squareSize)
+        // Set the preview layer to fill the entire view
+        previewLayer.frame = view.bounds
         previewLayer.videoGravity = .resizeAspectFill
         view.layer.addSublayer(previewLayer)
+        
         return view
     }
     
     func updateUIView(_ uiView: UIView, context: Context) {
         DispatchQueue.main.async {
-            // Maintain square aspect ratio when view updates
-            let squareSize = min(uiView.bounds.width, uiView.bounds.height)
-            let x = (uiView.bounds.width - squareSize) / 2
-            let y = (uiView.bounds.height - squareSize) / 2
-            previewLayer.frame = CGRect(x: x, y: y, width: squareSize, height: squareSize)
+            // Update the preview layer to match the view's full bounds
+            previewLayer.frame = uiView.bounds
         }
     }
 }
+
 
 struct DetectionBoxesView: View {
     let detections: [Detection]
     let geometry: GeometryProxy
     
     var body: some View {
-        let squareSize = min(geometry.size.width, geometry.size.height)
-        let x = (geometry.size.width - squareSize) / 2
-        let y = (geometry.size.height - squareSize) / 2
-        
         ZStack {
             ForEach(detections) { detection in
-                let rect = detection.boundingBox
                 Rectangle()
-                    .path(in: CGRect(
-                        x: x + (rect.minX * squareSize),
-                        y: y + (rect.minY * squareSize),
-                        width: rect.width * squareSize,
-                        height: rect.height * squareSize
-                    ))
+                    .path(in: detection.boundingBox)
                     .stroke(Color.red, lineWidth: 2)
                 
                 Text("\(detection.label) \(Int(detection.confidence * 100))%")
@@ -188,10 +173,24 @@ struct DetectionBoxesView: View {
                     .background(Color.black.opacity(0.5))
                     .padding(4)
                     .position(
-                        x: x + (rect.minX * squareSize),
-                        y: y + (rect.minY * squareSize) - 10
+                        x: detection.boundingBox.midX,
+                        y: detection.boundingBox.minY - 10
                     )
             }
+        }
+        .onAppear {
+            // Update YOLOProcessor with current screen dimensions
+            YOLOProcessor.shared.updateScreenDimensions(
+                width: geometry.size.width,
+                height: geometry.size.height
+            )
+        }
+        .onChange(of: geometry.size) { newSize in
+            // Update when screen size changes (e.g. rotation)
+            YOLOProcessor.shared.updateScreenDimensions(
+                width: newSize.width,
+                height: newSize.height
+            )
         }
     }
 }
